@@ -74,3 +74,9 @@ model Notification {
   @@index([userId])
   @@index([isRead])
 }
+// ADD THIS TO THE BOTTOM OF YOUR SCHEMA
+model Category {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  createdAt DateTime @default(now())
+}

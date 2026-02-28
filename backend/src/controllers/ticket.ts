@@ -3,46 +3,86 @@ import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// 1. STUDENT: Submit a Ticket
+/**
+ * 1. STUDENT: Submit a Ticket
+ * Creates the ticket and notifies BOTH the student and all Staff/Admins.
+ */
 export const submitTicket = async (req: any, res: Response): Promise<void> => {
   try {
-    const { title, description, category, attachmentUrl } = req.body;
-    if (!req.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { title, description, category } = req.body;
+    
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized. Please log in." });
+      return;
+    }
 
-    const ticket = await prisma.ticket.create({
+    const attachmentUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
+    // 1. Create the Ticket
+    const newTicket = await prisma.ticket.create({
       data: {
         title,
         description,
         category: category || "General",
-        attachmentUrl: attachmentUrl || null,
+        attachmentUrl: attachmentUrl, 
         student: { connect: { id: req.user.id } }
       } as Prisma.TicketCreateInput,
     });
 
+    // 2. Notify the Submitting Student
     await prisma.notification.create({
       data: {
-        message: `Your ticket "${ticket.title}" has been submitted successfully.`,
-        user: { connect: { id: req.user.id } }
+        message: `Your ticket "${title}" has been submitted successfully.`,
+        userId: req.user.id
       }
     });
 
-    res.status(201).json(ticket);
+    // 3. BROADCAST: Notify all Staff and Admins about the new complaint
+    const staffAndAdmins = await prisma.user.findMany({
+      where: { role: { in: ['STAFF', 'ADMIN'] } },
+      select: { id: true }
+    });
+
+    const staffNotifications = staffAndAdmins.map(user => ({
+      userId: user.id,
+      message: `New Complaint: "${title}" by ${req.user.name || 'a student'}.`
+    }));
+
+    if (staffNotifications.length > 0) {
+      await prisma.notification.createMany({
+        data: staffNotifications
+      });
+    }
+
+    res.status(201).json(newTicket);
   } catch (error: any) {
+    console.error("Ticket Submission Error:", error);
     res.status(500).json({ error: "Submission failed: " + error.message });
   }
 };
 
-// 2. HISTORY: Role-based filtering
+/**
+ * 2. HISTORY: Role-based filtering
+ */
 export const getTicketHistory = async (req: any, res: Response): Promise<void> => {
   try {
-    if (!req.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     const { id, role } = req.user;
     let whereClause: any = {};
 
     if (role === 'STUDENT') {
       whereClause = { studentId: id };
     } else if (role === 'STAFF') {
-      whereClause = { OR: [{ assignedToId: id }, { status: 'OPEN' }] };
+      whereClause = { 
+        OR: [
+          { assignedToId: id }, 
+          { status: 'OPEN' }
+        ] 
+      };
     } else if (role === 'ADMIN') {
       whereClause = {}; 
     }
@@ -50,23 +90,31 @@ export const getTicketHistory = async (req: any, res: Response): Promise<void> =
     const tickets = await prisma.ticket.findMany({
       where: whereClause,
       include: {
-        student: { select: { name: true } },
+        student: { select: { name: true, email: true } },
         assignedTo: { select: { name: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
+
     res.json(tickets);
   } catch (error: any) {
-    res.status(500).json({ error: "History fetch failed." });
+    res.status(500).json({ error: "Could not retrieve ticket history." });
   }
 };
 
-// 3. UPDATE: Staff/Admin updates
+/**
+ * 3. UPDATE: Staff/Admin updates
+ * Updates ticket and notifies the student of the progress/resolution.
+ */
 export const updateTicket = async (req: any, res: Response): Promise<void> => {
   try {
     const { ticketId } = req.params;
     const { status, remarks, category } = req.body;
-    if (!req.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const updateData: any = {
       status: status || undefined,
@@ -74,51 +122,61 @@ export const updateTicket = async (req: any, res: Response): Promise<void> => {
       category: category || undefined,
     };
 
+    // If a Staff member updates it, they become the assigned handler
     if (req.user.role === 'STAFF') {
       updateData.assignedTo = { connect: { id: req.user.id } };
     }
 
-    const updated = await prisma.ticket.update({
+    // 1. Update the ticket
+    const updatedTicket = await prisma.ticket.update({
       where: { id: ticketId },
       data: updateData
     });
 
-    if (updated.studentId) {
-      await prisma.notification.create({
-        data: {
-          message: `Your ticket "${updated.title}" has been updated to ${updated.status}.`,
-          user: { connect: { id: updated.studentId } }
-        }
-      });
-    }
+    // 2. Notify the Student of the update
+    const statusLabel = updatedTicket.status.toLowerCase().replace('_', ' ');
+    await prisma.notification.create({
+      data: {
+        message: `Update: Your ticket "${updatedTicket.title}" is now ${statusLabel}.`,
+        userId: updatedTicket.studentId
+      }
+    });
 
-    res.json(updated);
+    res.json(updatedTicket);
   } catch (error: any) {
+    console.error("Update Error:", error);
     res.status(500).json({ error: "Update failed: " + error.message });
   }
 };
 
-// 4. ADMIN: Analytics Dashboard
+/**
+ * 4. ADMIN: Analytics Dashboard
+ */
 export const getAnalytics = async (req: any, res: Response) => {
   try {
-    if (req.user.role !== 'ADMIN') return res.status(403).json({ error: "Denied" });
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ error: "Access denied." });
+    }
+
     const [total, open, resolved] = await Promise.all([
       prisma.ticket.count(),
       prisma.ticket.count({ where: { status: 'OPEN' } }),
       prisma.ticket.count({ where: { status: 'RESOLVED' } })
     ]);
+
     res.json({ total, open, resolved });
   } catch (error: any) {
-    res.status(500).json({ error: "Analytics failed" });
+    res.status(500).json({ error: "Failed to load analytics." });
   }
 };
 
-// 5. ASK AI: Google Gemini Integration (Gemini 2.5 Flash)
+/**
+ * 5. ASK AI: Google Gemini Integration
+ * Uses gemini-2.5-flash as requested.
+ */
 export const askAIHelp = async (req: any, res: Response) => {
   try {
     const { prompt } = req.body;
-    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
@@ -135,39 +193,39 @@ export const askAIHelp = async (req: any, res: Response) => {
 
     res.json({ answer });
   } catch (error: any) {
-    res.status(500).json({ error: "AI Assistant error: " + error.message });
+    console.error("AI Error:", error);
+    res.status(500).json({ error: "AI Assistant error." });
   }
 };
 
-// 6. CHAT HISTORY: Get user's AI conversations
-export const getChatHistory = async (req: any, res: Response): Promise<void> => {
+/**
+ * 6. CHAT HISTORY & NOTIFICATIONS
+ */
+export const getChatHistory = async (req: any, res: Response) => {
   try {
-    if (!req.user) { res.status(401).json({ error: "Unauthorized" }); return; }
-
     const history = await prisma.chatMessage.findMany({
       where: { userId: req.user.id },
       orderBy: { createdAt: 'asc' }
     });
-
     res.json(history);
-  } catch (error: any) {
-    res.status(500).json({ error: "Chat history fetch failed: " + error.message });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch chat history." });
   }
 };
 
-// 7. NOTIFICATIONS: Get & Mark as Read
-export const getNotifications = async (req: any, res: Response): Promise<void> => {
+export const getNotifications = async (req: any, res: Response) => {
   try {
-    if (!req.user) return;
     const notifications = await prisma.notification.findMany({
       where: { userId: req.user.id },
       orderBy: { createdAt: 'desc' }
     });
     res.json(notifications);
-  } catch (error) { res.status(500).json({ error: "Fetch failed" }); }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch notifications." });
+  }
 };
 
-export const markNotificationRead = async (req: any, res: Response): Promise<void> => {
+export const markNotificationRead = async (req: any, res: Response) => {
   try {
     const { id } = req.params;
     if (id) {
@@ -179,5 +237,7 @@ export const markNotificationRead = async (req: any, res: Response): Promise<voi
       });
     }
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: "Update failed" }); }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update notification status." });
+  }
 };
