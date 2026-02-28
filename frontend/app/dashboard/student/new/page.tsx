@@ -1,15 +1,38 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import { Send, Upload, CheckCircle, X, FileText } from 'lucide-react';
+import { Send, Upload, CheckCircle, X } from 'lucide-react';
 
 export default function NewComplaintPage() {
-  const [form, setForm] = useState({ title: '', description: '', category: 'General' });
-  const [file, setFile] = useState<File | null>(null); // single file
+  const [form, setForm] = useState({ title: '', description: '', category: '' });
+  const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]); // fetched categories
   const router = useRouter();
 
+  // --- FETCH CATEGORIES ---
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        // ✅ Correct: no extra /api
+        const res = await api.get('/categories'); 
+        const catNames = res.data.map((cat: any) => cat.name);
+        setCategories(catNames);
+
+        // Set first category as default
+        if (catNames.length > 0) {
+          setForm((prev) => ({ ...prev, category: catNames[0] }));
+        }
+      } catch (err) {
+        console.error("Error fetching categories:", err);
+      }
+    };
+
+    fetchCategories();
+  }, []);
+
+  // --- SUBMIT COMPLAINT ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title || !form.description) return;
@@ -20,7 +43,7 @@ export default function NewComplaintPage() {
       formData.append('title', form.title);
       formData.append('description', form.description);
       formData.append('category', form.category);
-      if (file) formData.append('attachment', file); // MUST match multer key
+      if (file) formData.append('attachment', file); // must match multer key
 
       const res = await api.post('/tickets/submit', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -67,11 +90,15 @@ export default function NewComplaintPage() {
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
             >
-              <option value="General">General Inquiries</option>
-              <option value="Academic">Academic / Grades</option>
-              <option value="Finance">Tuition & Finance</option>
-              <option value="Technical">Portal / Technical Issue</option>
-              <option value="Dormitory">Dormitory / Cafe</option>
+              {categories.length === 0 ? (
+                <option value="">Loading categories...</option>
+              ) : (
+                categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -100,7 +127,7 @@ export default function NewComplaintPage() {
                 accept="image/*,.pdf"
                 onChange={(e) => {
                   if (e.target.files && e.target.files.length > 0) {
-                    setFile(e.target.files[0]); // ✅ single File
+                    setFile(e.target.files[0]);
                   }
                 }}
               />
