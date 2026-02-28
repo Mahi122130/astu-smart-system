@@ -23,11 +23,26 @@ function AdminContent() {
 
   const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(url);
 
+  /**
+   * REFACTORED: No hardcoded strings.
+   * Pulls the Base URL from the same Environment Variable used by your API lib.
+   */
   const getFullUrl = (path: string) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    return `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
+
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    
+    if (!envUrl) {
+      console.warn("NEXT_PUBLIC_API_URL is not defined. Falling back to relative path.");
+      return path;
+    }
+
+    // Removes '/api' and any trailing slashes to get the clean root domain
+    const rootDomain = envUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    
+    return `${rootDomain}${cleanPath}`;
   };
 
   const fetchData = async () => {
@@ -87,7 +102,7 @@ function AdminContent() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 md:space-y-8 p-4 md:p-0">
-      {/* Header - Now stacks on mobile */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-6 rounded-3xl border border-slate-200 shadow-sm gap-4">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight capitalize">
@@ -109,10 +124,9 @@ function AdminContent() {
         </div>
       )}
 
-      {/* --- TICKETS TAB - Table on Desktop, Cards on Mobile --- */}
+      {/* --- TICKETS TAB --- */}
       {activeTab === 'tickets' && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
-          {/* Desktop View */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b border-slate-100">
@@ -156,7 +170,6 @@ function AdminContent() {
             </table>
           </div>
 
-          {/* Mobile View Cards */}
           <div className="md:hidden divide-y divide-slate-100">
             {allTickets.map((t) => (
               <div key={t.id} className="p-5 flex flex-col gap-3">
@@ -229,7 +242,7 @@ function AdminContent() {
         </div>
       )}
 
-      {/* --- MODALS (Updated for Mobile) --- */}
+      {/* --- MODALS --- */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z- flex items-center justify-center p-4">
           <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl p-6 md:p-8 border border-slate-100 animate-in zoom-in duration-200">
@@ -261,7 +274,6 @@ function AdminContent() {
       {selectedTicket && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z- flex items-center justify-center p-0 md:p-4">
           <div className="bg-white rounded-t-[2.5rem] md:rounded-[2.5rem] w-full max-w-2xl h-full md:h-auto md:max-h-[90vh] shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom md:zoom-in duration-300">
-            {/* Modal Header */}
             <div className="p-6 md:p-8 border-b flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-blue-600 text-white rounded-2xl">
@@ -275,7 +287,6 @@ function AdminContent() {
               <button onClick={() => setSelectedTicket(null)} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full transition-colors"><X size={28} /></button>
             </div>
 
-            {/* Modal Content */}
             <div className="flex-1 p-6 md:p-8 space-y-6 md:space-y-8 overflow-y-auto">
               <div>
                 <h4 className="text-xl md:text-2xl font-black text-slate-900 leading-tight mb-4">{selectedTicket.title}</h4>
@@ -310,7 +321,6 @@ function AdminContent() {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="p-6 md:p-8 border-t bg-slate-50/50">
               <button onClick={() => setSelectedTicket(null)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-sm active:scale-95 transition-transform">Close View</button>
             </div>
@@ -321,7 +331,6 @@ function AdminContent() {
   );
 }
 
-// Fixed Hover: No more blue-black on every item. Clean and professional.
 function StatCard({ title, value, icon, color, bg }: any) {
   return (
     <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 flex items-center justify-between transition-all hover:shadow-lg hover:-translate-y-1">

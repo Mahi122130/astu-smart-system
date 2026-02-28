@@ -28,7 +28,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // --- STATIC FILE SERVING (CRITICAL FOR IMAGES) ---
 /** * This makes files in your /uploads folder available at:
- * http://localhost:5000/uploads/filename.jpg
+ * http://:5000/uploads/filename.jpg
  * Using process.cwd() is safer than __dirname when using TypeScript/Build tools.
  */
 app.use('/uploads', express.static(uploadDir));
@@ -67,8 +67,8 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`
   --------------------------------------------------
-  🚀 ASTU Backend running on: http://localhost:${PORT}
-  🖼️  Images available at: http://localhost:${PORT}/uploads/
+  🚀 ASTU Backend running on: http://
+  🖼️  Images available at: http://:${PORT}/uploads/
   --------------------------------------------------
   `);
 });

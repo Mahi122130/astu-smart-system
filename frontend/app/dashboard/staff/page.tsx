@@ -14,9 +14,19 @@ export default function StaffPage() {
 
   useEffect(() => { fetchTickets(); }, []);
 
-  const getFileUrl = (url: string) => {
-    if (!url) return null;
-    return url.startsWith('http') ? url : `http://localhost:5000${url}`;
+  // --- REFACTORED: NO HARDCODED URL ---
+  const getFileUrl = (path: string) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+
+    // Use the environment variable, defaults to empty string if not set
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+    
+    // Clean the URL to get the root domain (removes /api and trailing slashes)
+    const rootDomain = baseUrl.replace(/\/api\/?$/, '').replace(/\/$/, '');
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+
+    return `${rootDomain}${cleanPath}`;
   };
 
   const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif)$/i.test(url);
