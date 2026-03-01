@@ -20,7 +20,10 @@ An AI-powered digital platform designed for **Adama Science and Technology Unive
 - **AI Integration:** Google Generative AI (Gemini SDK)
 - **Deployment:** Render (Backend), Vercel (Frontend)
 
-
+To test the app
+admin:tsion@gmail.com , tsion123
+staff:hawi@gmail.com, hawi123
+student:abebe@gmail.com,abebe1234
 
 ---
 
