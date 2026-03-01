@@ -9,11 +9,13 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 export const submitTicket = async (req: any, res: Response): Promise<void> => {
   try {
     const { title, description, category } = req.body;
-    if (!req.user) return res.status(401).json({ error: "Unauthorized. Please log in." });
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized. Please log in." });
+      return;
+    }
 
     const attachmentUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
-    // Create the Ticket
     const newTicket = await prisma.ticket.create({
       data: {
         title,
@@ -21,10 +23,9 @@ export const submitTicket = async (req: any, res: Response): Promise<void> => {
         category: category || "General",
         attachmentUrl: attachmentUrl, 
         student: { connect: { id: req.user.id } }
-      } as Prisma.TicketCreateInput,
+      },
     });
 
-    // Notify the submitting Student
     await prisma.notification.create({
       data: {
         message: `Your ticket "${title}" has been submitted successfully.`,
@@ -32,7 +33,6 @@ export const submitTicket = async (req: any, res: Response): Promise<void> => {
       }
     });
 
-    // Notify all Staff/Admins
     const staffAndAdmins = await prisma.user.findMany({
       where: { role: { in: ['STAFF', 'ADMIN'] } },
       select: { id: true }
@@ -59,7 +59,10 @@ export const submitTicket = async (req: any, res: Response): Promise<void> => {
  */
 export const getTicketHistory = async (req: any, res: Response): Promise<void> => {
   try {
-    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const { id, role } = req.user;
     let whereClause: any = {};
@@ -90,18 +93,23 @@ export const updateTicket = async (req: any, res: Response): Promise<void> => {
   try {
     const { ticketId } = req.params;
     const { status, remarks, category } = req.body;
-    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     const updateData: any = { status, remarks, category };
 
-    if (req.user.role === 'STAFF') updateData.assignedTo = { connect: { id: req.user.id } };
+    if (req.user.role === 'STAFF') {
+      updateData.assignedTo = { connect: { id: req.user.id } };
+    }
 
     const updatedTicket = await prisma.ticket.update({
       where: { id: ticketId },
       data: updateData
     });
 
-    // Notify Student of update
     const statusLabel = updatedTicket.status?.toLowerCase().replace('_', ' ');
     await prisma.notification.create({
       data: {
@@ -120,9 +128,12 @@ export const updateTicket = async (req: any, res: Response): Promise<void> => {
 /**
  * 4. Analytics Dashboard
  */
-export const getAnalytics = async (req: any, res: Response) => {
+export const getAnalytics = async (req: any, res: Response): Promise<void> => {
   try {
-    if (req.user.role !== 'ADMIN') return res.status(403).json({ error: "Access denied." });
+    if (req.user.role !== 'ADMIN') {
+      res.status(403).json({ error: "Access denied." });
+      return;
+    }
 
     const [total, open, resolved] = await Promise.all([
       prisma.ticket.count(),
@@ -139,10 +150,11 @@ export const getAnalytics = async (req: any, res: Response) => {
 /**
  * 5. Ask AI - Gemini
  */
-export const askAIHelp = async (req: any, res: Response) => {
+export const askAIHelp = async (req: any, res: Response): Promise<void> => {
   try {
     const { prompt } = req.body;
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const answer = result.response.text();
@@ -161,7 +173,7 @@ export const askAIHelp = async (req: any, res: Response) => {
 /**
  * 6. Chat History
  */
-export const getChatHistory = async (req: any, res: Response) => {
+export const getChatHistory = async (req: any, res: Response): Promise<void> => {
   try {
     const history = await prisma.chatMessage.findMany({
       where: { userId: req.user.id },
@@ -174,11 +186,14 @@ export const getChatHistory = async (req: any, res: Response) => {
 };
 
 /**
- * 7. Notifications (Fixed)
+ * 7. Notifications
  */
-export const getNotifications = async (req: any, res: Response) => {
+export const getNotifications = async (req: any, res: Response): Promise<void> => {
   try {
-    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
 
     let notifications;
     if (req.user.role === 'STUDENT') {
@@ -187,7 +202,6 @@ export const getNotifications = async (req: any, res: Response) => {
         orderBy: { createdAt: 'desc' }
       });
     } else {
-      // Staff/Admin see all notifications
       notifications = await prisma.notification.findMany({
         orderBy: { createdAt: 'desc' }
       });
@@ -200,7 +214,7 @@ export const getNotifications = async (req: any, res: Response) => {
   }
 };
 
-export const markNotificationRead = async (req: any, res: Response) => {
+export const markNotificationRead = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     if (id) {

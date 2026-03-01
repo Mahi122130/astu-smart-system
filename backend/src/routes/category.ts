@@ -1,17 +1,16 @@
 // routes/category.ts
 import { Router, Request, Response } from 'express';
-import prisma from '../lib/prisma'; // Ensure prisma client is correctly exported from lib/prisma
+import prisma from '../lib/prisma';
 
 const router = Router();
 
 /**
  * GET /api/categories
- * Fetch all categories in alphabetical order
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
     const categories = await prisma.category.findMany({
-      orderBy: { name: 'asc' } // Sort alphabetically
+      orderBy: { name: 'asc' }
     });
     res.json(categories);
   } catch (err) {
@@ -22,11 +21,14 @@ router.get('/', async (req: Request, res: Response) => {
 
 /**
  * POST /api/categories
- * Add a new category
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response): Promise<void> => {
   const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "Category name is required" });
+  
+  if (!name) {
+    res.status(400).json({ error: "Category name is required" });
+    return;
+  }
 
   try {
     const category = await prisma.category.create({
@@ -34,9 +36,9 @@ router.post('/', async (req: Request, res: Response) => {
     });
     res.json(category);
   } catch (err: any) {
-    // Prisma unique constraint error
     if (err.code === 'P2002') {
-      return res.status(400).json({ error: "Category already exists" });
+      res.status(400).json({ error: "Category already exists" });
+      return;
     }
     console.error("Error creating category:", err);
     res.status(500).json({ error: "Database error" });
@@ -45,16 +47,25 @@ router.post('/', async (req: Request, res: Response) => {
 
 /**
  * DELETE /api/categories/:id
- * Delete a category by id
+ * Fixed: Explicitly handle the 'id' param type for Prisma
  */
-router.delete('/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
+router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
-    await prisma.category.delete({ where: { id } });
+    const { id } = req.params;
+
+    if (!id) {
+      res.status(400).json({ error: "Category ID is required" });
+      return;
+    }
+
+    await prisma.category.delete({ 
+      where: { id: String(id) } 
+    });
+    
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting category:", err);
-    res.status(500).json({ error: "Delete failed" });
+    res.status(500).json({ error: "Delete failed. It might not exist." });
   }
 });
 

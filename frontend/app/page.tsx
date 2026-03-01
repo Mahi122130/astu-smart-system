@@ -79,7 +79,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="py-12 text-center text-slate-400 text-sm">
-        <p>© 2026 Addis Ababa Science and Technology University. All rights reserved.</p>
+        <p>© 2026 Adama Science and Technology University. All rights reserved.</p>
       </footer>
     </div>
   );
